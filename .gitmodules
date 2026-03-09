@@ -1,0 +1,3 @@
+[submodule "reference/PaddleOCR"]
+	path = reference/PaddleOCR
+	url = https://github.com/yunho-c/PaddleOCR
