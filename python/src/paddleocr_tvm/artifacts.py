@@ -99,11 +99,14 @@ def unpack_model_tarball(layout: ArtifactLayout, model_key: str, *, force: bool 
 
 
 def find_inference_dir(root: Path) -> Path | None:
-    """Find the directory containing inference.pdmodel and inference.pdiparams."""
+    """Find the directory containing Paddle inference files."""
 
     for pdmodel in root.rglob("inference.pdmodel"):
         if (pdmodel.parent / "inference.pdiparams").exists():
             return pdmodel.parent
+    for json_model in root.rglob("inference.json"):
+        if (json_model.parent / "inference.pdiparams").exists():
+            return json_model.parent
     return None
 
 

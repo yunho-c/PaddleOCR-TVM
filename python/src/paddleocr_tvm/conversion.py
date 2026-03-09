@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -10,16 +11,21 @@ from paddleocr_tvm.artifacts import ArtifactLayout, onnx_path_for, unpack_model_
 from paddleocr_tvm.errors import ArtifactPreparationError, DependencyUnavailableError
 
 
-def ensure_paddlex_cli() -> str:
-    """Return the PaddleX CLI path or raise a clear error."""
+def ensure_conversion_cli() -> tuple[str, str]:
+    """Return the preferred Paddle-to-ONNX CLI and its mode."""
+
+    paddle2onnx = shutil.which("paddle2onnx")
+    if paddle2onnx is not None:
+        return paddle2onnx, "paddle2onnx"
 
     paddlex = shutil.which("paddlex")
-    if paddlex is None:
-        raise DependencyUnavailableError(
-            "The `paddlex` CLI is required for Paddle-to-ONNX conversion. "
-            "Install the parity environment or make `paddlex` available on PATH."
-        )
-    return paddlex
+    if paddlex is not None:
+        return paddlex, "paddlex"
+
+    raise DependencyUnavailableError(
+        "Paddle-to-ONNX conversion requires either `paddle2onnx` or `paddlex` "
+        "on PATH. Install the parity environment first."
+    )
 
 
 def convert_paddle_to_onnx(
@@ -35,21 +41,50 @@ def convert_paddle_to_onnx(
         return output_path
 
     inference_dir = unpack_model_tarball(layout, model_key, force=force)
-    ensure_paddlex_cli()
+    converter, mode = ensure_conversion_cli()
     temp_dir = layout.onnx_dir / f"{model_key}_build"
     temp_dir.mkdir(parents=True, exist_ok=True)
-    command = [
-        "paddlex",
-        "--paddle2onnx",
-        "--paddle_model_dir",
-        str(inference_dir),
-        "--onnx_model_dir",
-        str(temp_dir),
-        "--opset_version",
-        "17",
-    ]
+    if mode == "paddle2onnx":
+        model_filename = (
+            "inference.json"
+            if (inference_dir / "inference.json").exists()
+            else "inference.pdmodel"
+        )
+        command = [
+            converter,
+            "--model_dir",
+            str(inference_dir),
+            "--model_filename",
+            model_filename,
+            "--params_filename",
+            "inference.pdiparams",
+            "--save_file",
+            str(temp_dir / f"{model_key}.onnx"),
+            "--opset_version",
+            "17",
+        ]
+    else:
+        command = [
+            converter,
+            "--paddle2onnx",
+            "--paddle_model_dir",
+            str(inference_dir),
+            "--onnx_model_dir",
+            str(temp_dir),
+            "--opset_version",
+            "17",
+        ]
     try:
-        subprocess.run(command, check=True, capture_output=True, text=True)
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            env={
+                **os.environ,
+                "PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK": "True",
+            },
+        )
     except subprocess.CalledProcessError as exc:
         message = exc.stderr or exc.stdout or str(exc)
         raise ArtifactPreparationError(
