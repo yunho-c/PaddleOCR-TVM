@@ -8,7 +8,7 @@ import numpy as np
 
 from paddleocr_tvm.artifacts import ensure_directories, resolve_artifacts_dir
 from paddleocr_tvm.backends import PaddleInferenceRunner, TvmRelaxRunner
-from paddleocr_tvm.constants import DEFAULT_DICT_PATH, REC_IMAGE_SHAPE
+from paddleocr_tvm.constants import DEFAULT_DICT_PATH, DET_IMAGE_SHAPE, REC_IMAGE_SHAPE
 from paddleocr_tvm.conversion import convert_paddle_to_onnx
 from paddleocr_tvm.errors import ArtifactPreparationError
 from paddleocr_tvm.geometry import get_rotate_crop_image, load_bgr_image, sorted_boxes
@@ -91,7 +91,13 @@ def prepare_mobile_models(artifacts_dir: Path | str | None, *, target: str = "ll
     ensure_directories(layout)
     det_onnx = convert_paddle_to_onnx(layout, "mobile_det")
     rec_onnx = convert_paddle_to_onnx(layout, "mobile_rec")
-    TvmRelaxRunner(layout, "mobile_det", det_onnx, target=target)
+    TvmRelaxRunner(
+        layout,
+        "mobile_det",
+        det_onnx,
+        target=target,
+        shape_dict={"x": [1, *DET_IMAGE_SHAPE]},
+    )
     TvmRelaxRunner(
         layout,
         "mobile_rec",
@@ -105,7 +111,12 @@ def load_mobile_detector(artifacts_dir: Path | str | None) -> MobileDetector:
     """Load the TVM-backed mobile detector."""
 
     layout = resolve_artifacts_dir(artifacts_dir)
-    runner = TvmRelaxRunner(layout, "mobile_det", convert_paddle_to_onnx(layout, "mobile_det"))
+    runner = TvmRelaxRunner(
+        layout,
+        "mobile_det",
+        convert_paddle_to_onnx(layout, "mobile_det"),
+        shape_dict={"x": [1, *DET_IMAGE_SHAPE]},
+    )
     return MobileDetector(runner)
 
 

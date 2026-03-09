@@ -51,8 +51,11 @@ class PaddleInferenceRunner(InferenceRunner):
 
     def __init__(self, model_dir: Path):
         paddle = _import_optional("paddle", "PaddlePaddle is required for parity mode.")
+        model_path = model_dir / "inference.pdmodel"
+        if not model_path.exists():
+            model_path = model_dir / "inference.json"
         config = paddle.inference.Config(
-            str(model_dir / "inference.pdmodel"),
+            str(model_path),
             str(model_dir / "inference.pdiparams"),
         )
         config.disable_gpu()
@@ -96,21 +99,32 @@ class TvmRelaxRunner(InferenceRunner):
         self._onnx_path = onnx_path
         self._target = target
         self._shape_dict = shape_dict
-        self._vm = self._build_vm()
+        self._input_names = self._load_input_names()
+        self._vm_cache: dict[str, Any] = {}
+        if shape_dict is not None:
+            self._vm_cache[self._shape_cache_key(shape_dict)] = self._build_vm(shape_dict)
 
-    def _build_vm(self) -> Any:
+    def _build_vm(self, shape_dict: dict[str, list[int]]) -> Any:
         onnx = _import_optional("onnx", "onnx is required for TVM import.")
         tvm = self._tvm
-        metadata_path = relax_metadata_path_for(self._layout, self._model_key)
+        relax_onnx_frontend = importlib.import_module("tvm.relax.frontend.onnx")
+        metadata_path = relax_metadata_path_for(
+            self._layout,
+            f"{self._model_key}__{self._shape_cache_key(shape_dict)}",
+        )
         metadata = read_metadata(metadata_path) or {}
         if (
             metadata.get("onnx_path") != str(self._onnx_path)
             or metadata.get("target") != self._target
         ):
-            metadata = {"onnx_path": str(self._onnx_path), "target": self._target}
+            metadata = {
+                "onnx_path": str(self._onnx_path),
+                "shape_dict": shape_dict,
+                "target": self._target,
+            }
 
         model = onnx.load(str(self._onnx_path))
-        mod = tvm.relax.frontend.onnx.from_onnx(model, shape_dict=self._shape_dict)
+        mod = relax_onnx_frontend.from_onnx(model, shape_dict=shape_dict)
         executable = tvm.relax.build(mod, target=self._target)
         metadata_path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -129,9 +143,41 @@ class TvmRelaxRunner(InferenceRunner):
 
     def run(self, *inputs: np.ndarray) -> list[np.ndarray]:
         tvm = self._tvm
+        vm = self._get_vm(inputs)
         nd_inputs = [tvm.nd.array(np.asarray(array, dtype=np.float32)) for array in inputs]
-        result = self._vm["main"](*nd_inputs)
+        result = vm["main"](*nd_inputs)
         return _normalize_tvm_outputs(result)
+
+    def _get_vm(self, inputs: tuple[np.ndarray, ...]) -> Any:
+        shape_dict = self._shape_dict_for_inputs(inputs)
+        cache_key = self._shape_cache_key(shape_dict)
+        if cache_key not in self._vm_cache:
+            self._vm_cache[cache_key] = self._build_vm(shape_dict)
+        return self._vm_cache[cache_key]
+
+    def _load_input_names(self) -> list[str]:
+        onnx = _import_optional("onnx", "onnx is required for TVM import.")
+        model = onnx.load(str(self._onnx_path))
+        return [value.name for value in model.graph.input]
+
+    def _shape_dict_for_inputs(self, inputs: tuple[np.ndarray, ...]) -> dict[str, list[int]]:
+        if len(inputs) != len(self._input_names):
+            raise ArtifactPreparationError(
+                f"Expected {len(self._input_names)} inputs for {self._model_key}, "
+                f"got {len(inputs)}."
+            )
+        return {
+            name: list(np.asarray(array).shape)
+            for name, array in zip(self._input_names, inputs, strict=False)
+        }
+
+    @staticmethod
+    def _shape_cache_key(shape_dict: dict[str, list[int]]) -> str:
+        parts: list[str] = []
+        for name in sorted(shape_dict):
+            dims = "x".join(str(dim) for dim in shape_dict[name])
+            parts.append(f"{name}_{dims}")
+        return "__".join(parts)
 
 
 def _normalize_tvm_outputs(result: Any) -> list[np.ndarray]:
