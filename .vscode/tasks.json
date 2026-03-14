@@ -1,0 +1,110 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Python: Check",
+      "type": "shell",
+      "command": "pixi",
+      "args": ["run", "-e", "dev", "check"],
+      "options": {
+        "cwd": "${workspaceFolder}/python"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Python: Lint",
+      "type": "shell",
+      "command": "pixi",
+      "args": ["run", "-e", "dev", "lint"],
+      "options": {
+        "cwd": "${workspaceFolder}/python"
+      }
+    },
+    {
+      "label": "Python: Typecheck",
+      "type": "shell",
+      "command": "pixi",
+      "args": ["run", "-e", "dev", "typecheck"],
+      "options": {
+        "cwd": "${workspaceFolder}/python"
+      }
+    },
+    {
+      "label": "Python: Test",
+      "type": "shell",
+      "command": "pixi",
+      "args": ["run", "-e", "dev", "test"],
+      "options": {
+        "cwd": "${workspaceFolder}/python"
+      },
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "Python: Prepare Mobile",
+      "type": "shell",
+      "command": "pixi",
+      "args": ["run", "-e", "parity", "prepare-mobile"],
+      "options": {
+        "cwd": "${workspaceFolder}/python"
+      }
+    },
+    {
+      "label": "Python: OCR Mobile",
+      "type": "shell",
+      "command": "pixi",
+      "args": [
+        "run",
+        "-e",
+        "default",
+        "paddleocr-tvm",
+        "ocr-mobile",
+        "--image",
+        "${input:ocrMobileImage}",
+        "--artifacts-dir",
+        ".artifacts",
+        "--pretty"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/python"
+      }
+    },
+    {
+      "label": "Python: Parity Mobile",
+      "type": "shell",
+      "command": "pixi",
+      "args": [
+        "run",
+        "-e",
+        "parity",
+        "parity-mobile",
+        "--images",
+        "${input:parityMobileImages}",
+        "--artifacts-dir",
+        ".artifacts"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/python"
+      }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "ocrMobileImage",
+      "type": "promptString",
+      "description": "Path to the image for ocr-mobile (relative to workspace or absolute)",
+      "default": ""
+    },
+    {
+      "id": "parityMobileImages",
+      "type": "promptString",
+      "description": "Path to the image directory for parity-mobile (relative to workspace or absolute)",
+      "default": ""
+    }
+  ]
+}
