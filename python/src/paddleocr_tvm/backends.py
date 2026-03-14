@@ -16,6 +16,7 @@ from paddleocr_tvm.artifacts import (
     relax_metadata_path_for,
 )
 from paddleocr_tvm.errors import ArtifactPreparationError, DependencyUnavailableError
+from paddleocr_tvm.tvm_bootstrap import bootstrap_local_tvm
 
 
 class InferenceRunner(ABC):
@@ -90,10 +91,7 @@ class TvmRelaxRunner(InferenceRunner):
         target: str = "llvm",
         shape_dict: dict[str, list[int]] | None = None,
     ):
-        self._tvm = _import_optional(
-            "tvm",
-            "TVM with Relax support is required. Install a Python-importable TVM build first.",
-        )
+        self._tvm = _import_tvm()
         self._layout = layout
         self._model_key = model_key
         self._onnx_path = onnx_path
@@ -196,3 +194,15 @@ def _import_optional(module_name: str, message: str) -> Any:
         return importlib.import_module(module_name)
     except Exception as exc:
         raise DependencyUnavailableError(message) from exc
+
+
+def _import_tvm() -> Any:
+    paths = bootstrap_local_tvm()
+    try:
+        return importlib.import_module("tvm")
+    except Exception as exc:
+        raise DependencyUnavailableError(
+            "TVM with Relax support is required. This project loads TVM from "
+            f"{paths.python_dir}. Build native libraries with `scripts/build_tvm.sh` "
+            f"so {paths.build_dir} exists, then retry from the Pixi environment."
+        ) from exc

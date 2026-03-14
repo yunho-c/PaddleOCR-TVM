@@ -1,0 +1,7 @@
+{
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/python/src",
+    "${workspaceFolder}/external/tvm/python",
+    "${workspaceFolder}/external/tvm/3rdparty/tvm-ffi/python"
+  ]
+}

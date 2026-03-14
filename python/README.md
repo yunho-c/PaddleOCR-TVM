@@ -12,6 +12,12 @@ pixi install
 pixi run -e dev check
 ```
 
+Build the vendored TVM checkout:
+
+```bash
+pixi run build-tvm
+```
+
 Prepare Paddle and ONNX artifacts:
 
 ```bash
@@ -26,13 +32,19 @@ pixi run ocr-mobile -- --image /path/to/image.png --artifacts-dir .artifacts
 
 ## TVM note
 
-This package expects a modern Python-importable TVM build with Relax support. The
-default environment in this repository does not bootstrap TVM automatically because a
-current Relax-capable wheel was not available from the default channels in this
-environment. Commands that need TVM fail fast with a clear setup error.
+This package defaults to the vendored TVM checkout in
+[`../external/tvm`](../external/tvm). At runtime it prepends
+[`../external/tvm/python`](../external/tvm/python) to `sys.path` and points TVM at
+[`../external/tvm/build`](../external/tvm/build) for the native libraries. The Pixi
+environment still installs `apache-tvm-ffi` and TVM's Python-side dependencies, but
+the `tvm` module itself is loaded from the submodule source tree.
+
+If TVM-backed commands fail, rebuild the native libraries with `pixi run build-tvm`
+and retry from the `python/` project directory.
 
 ## Available tasks
 
+- `pixi run build-tvm`
 - `pixi run prepare-mobile`
 - `pixi run ocr-mobile -- --image /path/to/image.png`
 - `pixi run -e parity parity-mobile -- --images /path/to/images`
