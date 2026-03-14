@@ -1,3 +1,6 @@
 [submodule "reference/PaddleOCR"]
 	path = reference/PaddleOCR
 	url = https://github.com/yunho-c/PaddleOCR
+[submodule "external/tvm"]
+	path = external/tvm
+	url = https://github.com/apache/tvm
