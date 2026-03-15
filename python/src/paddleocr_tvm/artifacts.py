@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import requests  # type: ignore[import-untyped]
+import yaml  # type: ignore[import-untyped]
 
 from paddleocr_tvm.constants import DEFAULT_ARTIFACTS_DIR, MODEL_SPECS, ModelSpec
 from paddleocr_tvm.errors import ArtifactPreparationError
@@ -108,6 +109,25 @@ def find_inference_dir(root: Path) -> Path | None:
         if (json_model.parent / "inference.pdiparams").exists():
             return json_model.parent
     return None
+
+
+def load_character_dict(inference_dir: Path) -> list[str] | None:
+    """Load an inline recognition dictionary from a Paddle inference bundle."""
+
+    inference_yml = inference_dir / "inference.yml"
+    if not inference_yml.exists():
+        return None
+
+    payload = cast(dict[str, Any], yaml.safe_load(inference_yml.read_text(encoding="utf-8")))
+    postprocess = payload.get("PostProcess")
+    if not isinstance(postprocess, dict):
+        return None
+
+    character_dict = postprocess.get("character_dict")
+    if not isinstance(character_dict, list):
+        return None
+
+    return [str(item) for item in character_dict]
 
 
 def onnx_path_for(layout: ArtifactLayout, model_key: str) -> Path:

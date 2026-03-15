@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 
 import numpy as np
 
-from paddleocr_tvm.artifacts import ensure_directories, resolve_artifacts_dir
+from paddleocr_tvm.artifacts import (
+    ArtifactLayout,
+    ensure_directories,
+    load_character_dict,
+    resolve_artifacts_dir,
+    unpack_model_tarball,
+)
 from paddleocr_tvm.backends import PaddleInferenceRunner, TvmRelaxRunner
 from paddleocr_tvm.constants import DEFAULT_DICT_PATH, DET_IMAGE_SHAPE, REC_IMAGE_SHAPE
 from paddleocr_tvm.conversion import convert_paddle_to_onnx
@@ -43,10 +50,10 @@ class MobileRecognizer:
         self,
         runner: TvmRelaxRunner | PaddleInferenceRunner,
         *,
-        dict_path: Path = DEFAULT_DICT_PATH,
+        dict_source: Path | Sequence[str] = DEFAULT_DICT_PATH,
     ):
         self._runner = runner
-        self._decoder = CTCLabelDecoder(dict_path)
+        self._decoder = CTCLabelDecoder(dict_source)
 
     def __call__(self, images: list[np.ndarray]) -> list[tuple[str, float]]:
         if not images:
@@ -130,7 +137,7 @@ def load_mobile_recognizer(artifacts_dir: Path | str | None) -> MobileRecognizer
         convert_paddle_to_onnx(layout, "mobile_rec"),
         shape_dict={"x": [1, *REC_IMAGE_SHAPE]},
     )
-    return MobileRecognizer(runner)
+    return MobileRecognizer(runner, dict_source=_load_mobile_recognizer_dict(layout))
 
 
 def load_mobile_ocr(artifacts_dir: Path | str | None) -> MobileOCRPipeline:
@@ -140,3 +147,8 @@ def load_mobile_ocr(artifacts_dir: Path | str | None) -> MobileOCRPipeline:
         detector=load_mobile_detector(artifacts_dir),
         recognizer=load_mobile_recognizer(artifacts_dir),
     )
+
+
+def _load_mobile_recognizer_dict(layout: ArtifactLayout) -> Path | Sequence[str]:
+    inference_dir = unpack_model_tarball(layout, "mobile_rec")
+    return load_character_dict(inference_dir) or DEFAULT_DICT_PATH

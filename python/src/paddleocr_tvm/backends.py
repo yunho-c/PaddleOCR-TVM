@@ -142,7 +142,7 @@ class TvmRelaxRunner(InferenceRunner):
     def run(self, *inputs: np.ndarray) -> list[np.ndarray]:
         tvm = self._tvm
         vm = self._get_vm(inputs)
-        nd_inputs = [tvm.nd.array(np.asarray(array, dtype=np.float32)) for array in inputs]
+        nd_inputs = [_tvm_tensor(tvm, np.asarray(array, dtype=np.float32)) for array in inputs]
         result = vm["main"](*nd_inputs)
         return _normalize_tvm_outputs(result)
 
@@ -206,3 +206,11 @@ def _import_tvm() -> Any:
             f"{paths.python_dir}. Build native libraries with `scripts/build_tvm.sh` "
             f"so {paths.build_dir} exists, then retry from the Pixi environment."
         ) from exc
+
+
+def _tvm_tensor(tvm: Any, array: np.ndarray) -> Any:
+    if hasattr(tvm, "nd") and hasattr(tvm.nd, "array"):
+        return tvm.nd.array(array)
+    if hasattr(tvm, "runtime") and hasattr(tvm.runtime, "tensor"):
+        return tvm.runtime.tensor(array, device=tvm.cpu())
+    raise ArtifactPreparationError("Unable to construct a TVM runtime tensor for the current API.")

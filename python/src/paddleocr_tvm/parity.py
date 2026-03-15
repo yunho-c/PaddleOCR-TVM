@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from paddleocr_tvm.artifacts import ArtifactLayout, resolve_artifacts_dir, unpack_model_tarball
+from paddleocr_tvm.artifacts import (
+    ArtifactLayout,
+    load_character_dict,
+    resolve_artifacts_dir,
+    unpack_model_tarball,
+)
 from paddleocr_tvm.backends import PaddleInferenceRunner
+from paddleocr_tvm.constants import DEFAULT_DICT_PATH
 from paddleocr_tvm.pipeline import (
     MobileDetector,
     MobileOCRPipeline,
@@ -70,5 +76,8 @@ def _load_paddle_mobile_ocr(layout: ArtifactLayout) -> MobileOCRPipeline:
     det_dir = unpack_model_tarball(layout, "mobile_det")
     rec_dir = unpack_model_tarball(layout, "mobile_rec")
     detector = MobileDetector(PaddleInferenceRunner(det_dir))
-    recognizer = MobileRecognizer(PaddleInferenceRunner(rec_dir))
+    recognizer = MobileRecognizer(
+        PaddleInferenceRunner(rec_dir),
+        dict_source=load_character_dict(rec_dir) or DEFAULT_DICT_PATH,
+    )
     return MobileOCRPipeline(detector, recognizer)

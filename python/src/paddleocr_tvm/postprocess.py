@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
@@ -152,12 +153,24 @@ class DBPostProcess:
 class CTCLabelDecoder:
     """Minimal CTC decoder compatible with PP-OCRv5 dictionaries."""
 
-    def __init__(self, dict_path: Path, *, use_space_char: bool = True):
-        with dict_path.open("r", encoding="utf-8") as handle:
-            self.character = ["blank"] + [line.strip() for line in handle if line.strip()]
-        if use_space_char and " " not in self.character:
-            self.character.append(" ")
-        self.reverse = "arabic" in dict_path.name
+    def __init__(
+        self,
+        dict_source: Path | Sequence[str],
+        *,
+        use_space_char: bool = True,
+    ):
+        self.reverse = False
+        if isinstance(dict_source, Path):
+            with dict_source.open("r", encoding="utf-8") as handle:
+                characters = [line.rstrip("\n").rstrip("\r") for line in handle]
+            self.reverse = "arabic" in dict_source.name
+        else:
+            characters = [str(item) for item in dict_source]
+
+        if use_space_char and " " not in characters:
+            characters.append(" ")
+
+        self.character = ["blank", *characters]
 
     def decode(self, preds: np.ndarray) -> list[tuple[str, float]]:
         preds_idx = preds.argmax(axis=2)
@@ -167,6 +180,12 @@ class CTCLabelDecoder:
             selection = np.ones(len(preds_idx[batch_index]), dtype=bool)
             selection[1:] = preds_idx[batch_index][1:] != preds_idx[batch_index][:-1]
             selection &= preds_idx[batch_index] != 0
+            if np.any(preds_idx[batch_index][selection] >= len(self.character)):
+                max_index = int(preds_idx[batch_index][selection].max())
+                raise IndexError(
+                    "Recognizer output index exceeds character dictionary size: "
+                    f"max_index={max_index}, dictionary_size={len(self.character)}"
+                )
             chars = [self.character[int(idx)] for idx in preds_idx[batch_index][selection]]
             text = "".join(chars)
             if self.reverse:
