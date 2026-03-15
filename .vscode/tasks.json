@@ -95,6 +95,28 @@
       "options": {
         "cwd": "${workspaceFolder}/python"
       }
+    },
+    {
+      "label": "Python: Benchmark Mobile",
+      "type": "shell",
+      "command": "pixi",
+      "args": [
+        "run",
+        "-e",
+        "parity",
+        "benchmark-mobile",
+        "--images",
+        "${input:benchmarkMobileImages}",
+        "--artifacts-dir",
+        ".artifacts",
+        "--output-json",
+        ".artifacts/benchmarks/latest.json",
+        "--output-csv",
+        ".artifacts/benchmarks/latest.csv"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}/python"
+      }
     }
   ],
   "inputs": [
@@ -108,6 +130,12 @@
       "id": "parityMobileImages",
       "type": "promptString",
       "description": "Path to the image directory for parity-mobile (relative to workspace or absolute)",
+      "default": ""
+    },
+    {
+      "id": "benchmarkMobileImages",
+      "type": "promptString",
+      "description": "Path to the image directory for benchmark-mobile (relative to workspace or absolute)",
       "default": ""
     }
   ]
