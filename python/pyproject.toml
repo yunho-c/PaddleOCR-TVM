@@ -81,6 +81,7 @@ test-cov = "pytest --cov=paddleocr_tvm --cov-report=term-missing"
 typecheck = "mypy src"
 
 [tool.pixi.feature.parity.tasks]
+benchmark-mobile = "paddleocr-tvm benchmark-mobile"
 parity-mobile = "paddleocr-tvm parity-mobile"
 prepare-mobile = "paddleocr-tvm prepare-mobile --artifacts-dir .artifacts --target llvm"
 

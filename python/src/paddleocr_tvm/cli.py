@@ -8,6 +8,12 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from paddleocr_tvm import __version__
+from paddleocr_tvm.benchmark import (
+    DEFAULT_BENCHMARK_BACKENDS,
+    benchmark_mobile,
+    write_benchmark_csv,
+    write_benchmark_summary,
+)
 from paddleocr_tvm.parity import run_mobile_parity
 from paddleocr_tvm.pipeline import load_mobile_ocr, prepare_mobile_models
 
@@ -84,6 +90,55 @@ def build_parser() -> argparse.ArgumentParser:
         help="Write minimal Paddle-vs-TVM OCR visualizations into this directory.",
     )
 
+    benchmark_parser = subparsers.add_parser(
+        "benchmark-mobile",
+        help="Benchmark mobile OCR backends on a directory of images.",
+    )
+    benchmark_parser.add_argument(
+        "--images",
+        type=Path,
+        required=True,
+        help="Directory containing benchmark images.",
+    )
+    benchmark_parser.add_argument(
+        "--artifacts-dir",
+        type=Path,
+        default=Path(".artifacts"),
+        help="Artifact cache directory.",
+    )
+    benchmark_parser.add_argument(
+        "--backend",
+        dest="backends",
+        action="append",
+        default=None,
+        help=(
+            "Benchmark backend preset. May be repeated. "
+            f"Defaults to {', '.join(DEFAULT_BENCHMARK_BACKENDS)}."
+        ),
+    )
+    benchmark_parser.add_argument(
+        "--warmup",
+        type=int,
+        default=1,
+        help="Number of warmup passes over the dataset before timing.",
+    )
+    benchmark_parser.add_argument(
+        "--repeat",
+        type=int,
+        default=5,
+        help="Number of timed passes over the dataset.",
+    )
+    benchmark_parser.add_argument(
+        "--output-json",
+        type=Path,
+        help="Write benchmark results to a JSON file.",
+    )
+    benchmark_parser.add_argument(
+        "--output-csv",
+        type=Path,
+        help="Write aggregate benchmark rows to a CSV file.",
+    )
+
     return parser
 
 
@@ -111,7 +166,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "parity-mobile":
-        summary = run_mobile_parity(
+        parity_summary = run_mobile_parity(
             args.images,
             args.artifacts_dir,
             visualizations_dir=args.visualizations_dir,
@@ -119,14 +174,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.output_json is not None:
             args.output_json.parent.mkdir(parents=True, exist_ok=True)
             args.output_json.write_text(
-                json.dumps(summary, indent=2, ensure_ascii=False),
+                json.dumps(parity_summary, indent=2, ensure_ascii=False),
                 encoding="utf-8",
             )
             print(f"Wrote parity summary to {args.output_json}")
         else:
-            print(json.dumps(summary, indent=2, ensure_ascii=False))
+            print(json.dumps(parity_summary, indent=2, ensure_ascii=False))
         if args.visualizations_dir is not None:
             print(f"Wrote parity visualizations to {args.visualizations_dir}")
+        return 0
+
+    if args.command == "benchmark-mobile":
+        benchmark_summary = benchmark_mobile(
+            args.images,
+            args.artifacts_dir,
+            backends=args.backends,
+            warmup=args.warmup,
+            repeat=args.repeat,
+        )
+        if args.output_json is not None:
+            write_benchmark_summary(benchmark_summary, args.output_json)
+            print(f"Wrote benchmark summary to {args.output_json}")
+        else:
+            print(json.dumps(benchmark_summary, indent=2, ensure_ascii=False))
+        if args.output_csv is not None:
+            write_benchmark_csv(benchmark_summary, args.output_csv)
+            print(f"Wrote benchmark CSV to {args.output_csv}")
         return 0
 
     parser.print_help()

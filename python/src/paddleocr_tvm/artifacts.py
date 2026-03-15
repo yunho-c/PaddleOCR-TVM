@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tarfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,6 +23,7 @@ class ArtifactLayout:
     root: Path
     paddle_dir: Path
     onnx_dir: Path
+    relax_root: Path
     relax_dir: Path
 
 
@@ -33,6 +35,7 @@ def resolve_artifacts_dir(artifacts_dir: Path | str | None = None) -> ArtifactLa
         root=root,
         paddle_dir=root / "paddle",
         onnx_dir=root / "onnx",
+        relax_root=root / "relax",
         relax_dir=root / "relax" / "llvm",
     )
 
@@ -42,6 +45,7 @@ def ensure_directories(layout: ArtifactLayout) -> None:
 
     layout.paddle_dir.mkdir(parents=True, exist_ok=True)
     layout.onnx_dir.mkdir(parents=True, exist_ok=True)
+    layout.relax_root.mkdir(parents=True, exist_ok=True)
     layout.relax_dir.mkdir(parents=True, exist_ok=True)
 
 
@@ -136,10 +140,21 @@ def onnx_path_for(layout: ArtifactLayout, model_key: str) -> Path:
     return layout.onnx_dir / f"{model_key}.onnx"
 
 
-def relax_metadata_path_for(layout: ArtifactLayout, model_key: str) -> Path:
+def relax_dir_for_target(layout: ArtifactLayout, target: str = "llvm") -> Path:
+    """Return the Relax artifact directory for a specific target."""
+
+    return layout.relax_root / _target_slug(target)
+
+
+def relax_metadata_path_for(
+    layout: ArtifactLayout,
+    model_key: str,
+    *,
+    target: str = "llvm",
+) -> Path:
     """Return the canonical Relax metadata path for a model."""
 
-    return layout.relax_dir / f"{model_key}.json"
+    return relax_dir_for_target(layout, target) / f"{model_key}.json"
 
 
 def write_metadata(path: Path, payload: dict[str, Any]) -> None:
@@ -155,3 +170,7 @@ def read_metadata(path: Path) -> dict[str, Any] | None:
     if not path.exists():
         return None
     return cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+
+
+def _target_slug(target: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9]+", "_", target).strip("_").lower() or "llvm"

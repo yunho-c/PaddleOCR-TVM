@@ -3216,7 +3216,7 @@ packages:
 - pypi: ./
   name: paddleocr-tvm
   version: 0.1.0
-  sha256: e0c048411ffc4c1e5672f502179dde96ad89f30dd3cc03d781f9331194023b3f
+  sha256: 95c69592fa42afd4b09ab990748eea73d601f64fc3a99942e65d89226a085ab3
   requires_dist:
   - apache-tvm-ffi
   - cloudpickle>=3,<4

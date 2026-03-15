@@ -14,7 +14,13 @@ from paddleocr_tvm.artifacts import (
     resolve_artifacts_dir,
     unpack_model_tarball,
 )
-from paddleocr_tvm.backends import PaddleInferenceRunner, TvmRelaxRunner
+from paddleocr_tvm.backend_specs import TVM_LLVM_BACKEND, BackendSpec
+from paddleocr_tvm.backends import (
+    InferenceRunner,
+    OnnxRuntimeRunner,
+    PaddleInferenceRunner,
+    TvmRelaxRunner,
+)
 from paddleocr_tvm.constants import DEFAULT_DICT_PATH, DET_IMAGE_SHAPE, REC_IMAGE_SHAPE
 from paddleocr_tvm.conversion import convert_paddle_to_onnx
 from paddleocr_tvm.errors import ArtifactPreparationError
@@ -27,7 +33,7 @@ from paddleocr_tvm.types import OCRBox, OCRResult, OCRTextLine
 class MobileDetector:
     """Detector wrapper for the PP-OCRv5 mobile detector."""
 
-    def __init__(self, runner: TvmRelaxRunner | PaddleInferenceRunner):
+    def __init__(self, runner: InferenceRunner):
         self._runner = runner
         self._postprocess = DBPostProcess()
 
@@ -48,7 +54,7 @@ class MobileRecognizer:
 
     def __init__(
         self,
-        runner: TvmRelaxRunner | PaddleInferenceRunner,
+        runner: InferenceRunner,
         *,
         dict_source: Path | Sequence[str] = DEFAULT_DICT_PATH,
     ):
@@ -103,6 +109,7 @@ def prepare_mobile_models(artifacts_dir: Path | str | None, *, target: str = "ll
         "mobile_det",
         det_onnx,
         target=target,
+        device=None,
         shape_dict={"x": [1, *DET_IMAGE_SHAPE]},
     )
     TvmRelaxRunner(
@@ -110,45 +117,84 @@ def prepare_mobile_models(artifacts_dir: Path | str | None, *, target: str = "ll
         "mobile_rec",
         rec_onnx,
         target=target,
+        device=None,
         shape_dict={"x": [1, *REC_IMAGE_SHAPE]},
     )
 
 
-def load_mobile_detector(artifacts_dir: Path | str | None) -> MobileDetector:
+def load_mobile_detector(
+    artifacts_dir: Path | str | None,
+    *,
+    backend: BackendSpec = TVM_LLVM_BACKEND,
+) -> MobileDetector:
     """Load the TVM-backed mobile detector."""
 
     layout = resolve_artifacts_dir(artifacts_dir)
-    runner = TvmRelaxRunner(
+    runner = _build_runner(
         layout,
         "mobile_det",
-        convert_paddle_to_onnx(layout, "mobile_det"),
+        backend,
         shape_dict={"x": [1, *DET_IMAGE_SHAPE]},
     )
     return MobileDetector(runner)
 
 
-def load_mobile_recognizer(artifacts_dir: Path | str | None) -> MobileRecognizer:
+def load_mobile_recognizer(
+    artifacts_dir: Path | str | None,
+    *,
+    backend: BackendSpec = TVM_LLVM_BACKEND,
+) -> MobileRecognizer:
     """Load the TVM-backed mobile recognizer."""
 
     layout = resolve_artifacts_dir(artifacts_dir)
-    runner = TvmRelaxRunner(
+    runner = _build_runner(
         layout,
         "mobile_rec",
-        convert_paddle_to_onnx(layout, "mobile_rec"),
+        backend,
         shape_dict={"x": [1, *REC_IMAGE_SHAPE]},
     )
     return MobileRecognizer(runner, dict_source=_load_mobile_recognizer_dict(layout))
 
 
-def load_mobile_ocr(artifacts_dir: Path | str | None) -> MobileOCRPipeline:
+def load_mobile_ocr(
+    artifacts_dir: Path | str | None,
+    *,
+    det_backend: BackendSpec = TVM_LLVM_BACKEND,
+    rec_backend: BackendSpec | None = None,
+) -> MobileOCRPipeline:
     """Load the TVM-backed mobile OCR pipeline."""
 
+    recognizer_backend = rec_backend or det_backend
     return MobileOCRPipeline(
-        detector=load_mobile_detector(artifacts_dir),
-        recognizer=load_mobile_recognizer(artifacts_dir),
+        detector=load_mobile_detector(artifacts_dir, backend=det_backend),
+        recognizer=load_mobile_recognizer(artifacts_dir, backend=recognizer_backend),
     )
 
 
 def _load_mobile_recognizer_dict(layout: ArtifactLayout) -> Path | Sequence[str]:
     inference_dir = unpack_model_tarball(layout, "mobile_rec")
     return load_character_dict(inference_dir) or DEFAULT_DICT_PATH
+
+
+def _build_runner(
+    layout: ArtifactLayout,
+    model_key: str,
+    backend: BackendSpec,
+    *,
+    shape_dict: dict[str, list[int]] | None = None,
+) -> TvmRelaxRunner | PaddleInferenceRunner | OnnxRuntimeRunner:
+    if backend.kind == "paddle":
+        return PaddleInferenceRunner(
+            unpack_model_tarball(layout, model_key),
+            use_mkldnn=backend.paddle_use_mkldnn,
+        )
+    if backend.kind == "onnxruntime":
+        return OnnxRuntimeRunner(convert_paddle_to_onnx(layout, model_key))
+    return TvmRelaxRunner(
+        layout,
+        model_key,
+        convert_paddle_to_onnx(layout, model_key),
+        target=backend.target or "llvm",
+        device=backend.device,
+        shape_dict=shape_dict,
+    )

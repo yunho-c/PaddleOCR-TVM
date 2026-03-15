@@ -50,7 +50,7 @@ class OnnxRuntimeRunner(InferenceRunner):
 class PaddleInferenceRunner(InferenceRunner):
     """Paddle inference adapter used by the parity harness."""
 
-    def __init__(self, model_dir: Path):
+    def __init__(self, model_dir: Path, *, use_mkldnn: bool = True):
         paddle = _import_optional("paddle", "PaddlePaddle is required for parity mode.")
         model_path = model_dir / "inference.pdmodel"
         if not model_path.exists():
@@ -60,7 +60,8 @@ class PaddleInferenceRunner(InferenceRunner):
             str(model_dir / "inference.pdiparams"),
         )
         config.disable_gpu()
-        config.enable_mkldnn()
+        if use_mkldnn:
+            config.enable_mkldnn()
         config.switch_ir_optim(True)
         config.switch_use_feed_fetch_ops(False)
         self._predictor = paddle.inference.create_predictor(config)
@@ -89,6 +90,7 @@ class TvmRelaxRunner(InferenceRunner):
         onnx_path: Path,
         *,
         target: str = "llvm",
+        device: str | None = None,
         shape_dict: dict[str, list[int]] | None = None,
     ):
         self._tvm = _import_tvm()
@@ -96,6 +98,7 @@ class TvmRelaxRunner(InferenceRunner):
         self._model_key = model_key
         self._onnx_path = onnx_path
         self._target = target
+        self._device_name = device
         self._shape_dict = shape_dict
         self._input_names = self._load_input_names()
         self._vm_cache: dict[str, Any] = {}
@@ -109,6 +112,7 @@ class TvmRelaxRunner(InferenceRunner):
         metadata_path = relax_metadata_path_for(
             self._layout,
             f"{self._model_key}__{self._shape_cache_key(shape_dict)}",
+            target=self._target,
         )
         metadata = read_metadata(metadata_path) or {}
         if (
@@ -137,12 +141,16 @@ class TvmRelaxRunner(InferenceRunner):
             json.dumps(metadata, indent=2, sort_keys=True),
             encoding="utf-8",
         )
-        return tvm.relax.VirtualMachine(executable, tvm.cpu())
+        device = _resolve_tvm_device(tvm, self._target, self._device_name)
+        return tvm.relax.VirtualMachine(executable, device)
 
     def run(self, *inputs: np.ndarray) -> list[np.ndarray]:
         tvm = self._tvm
         vm = self._get_vm(inputs)
-        nd_inputs = [_tvm_tensor(tvm, np.asarray(array, dtype=np.float32)) for array in inputs]
+        device = _resolve_tvm_device(tvm, self._target, self._device_name)
+        nd_inputs = [
+            _tvm_tensor(tvm, np.asarray(array, dtype=np.float32), device) for array in inputs
+        ]
         result = vm["main"](*nd_inputs)
         return _normalize_tvm_outputs(result)
 
@@ -208,9 +216,33 @@ def _import_tvm() -> Any:
         ) from exc
 
 
-def _tvm_tensor(tvm: Any, array: np.ndarray) -> Any:
+def _tvm_tensor(tvm: Any, array: np.ndarray, device: Any) -> Any:
     if hasattr(tvm, "nd") and hasattr(tvm.nd, "array"):
-        return tvm.nd.array(array)
+        return tvm.nd.array(array, device=device)
     if hasattr(tvm, "runtime") and hasattr(tvm.runtime, "tensor"):
-        return tvm.runtime.tensor(array, device=tvm.cpu())
+        return tvm.runtime.tensor(array, device=device)
     raise ArtifactPreparationError("Unable to construct a TVM runtime tensor for the current API.")
+
+
+def _resolve_tvm_device(tvm: Any, target: str, device_name: str | None) -> Any:
+    name = device_name or _default_tvm_device_name(target)
+    if not hasattr(tvm, name):
+        raise ArtifactPreparationError(f"TVM device {name!r} is not available in this build.")
+    return getattr(tvm, name)()
+
+
+def _default_tvm_device_name(target: str) -> str:
+    target_lower = target.lower()
+    if "metal" in target_lower:
+        return "metal"
+    if "cuda" in target_lower:
+        return "cuda"
+    if "opencl" in target_lower:
+        return "opencl"
+    if "vulkan" in target_lower:
+        return "vulkan"
+    if "rocm" in target_lower:
+        return "rocm"
+    if "hexagon" in target_lower:
+        return "hexagon"
+    return "cpu"
