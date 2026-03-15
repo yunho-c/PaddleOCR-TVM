@@ -73,6 +73,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=Path(".artifacts"),
         help="Artifact cache directory.",
     )
+    parity_parser.add_argument(
+        "--output-json",
+        type=Path,
+        help="Write the parity summary to a JSON file.",
+    )
+    parity_parser.add_argument(
+        "--visualizations-dir",
+        type=Path,
+        help="Write minimal Paddle-vs-TVM OCR visualizations into this directory.",
+    )
 
     return parser
 
@@ -101,8 +111,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
 
     if args.command == "parity-mobile":
-        summary = run_mobile_parity(args.images, args.artifacts_dir)
-        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        summary = run_mobile_parity(
+            args.images,
+            args.artifacts_dir,
+            visualizations_dir=args.visualizations_dir,
+        )
+        if args.output_json is not None:
+            args.output_json.parent.mkdir(parents=True, exist_ok=True)
+            args.output_json.write_text(
+                json.dumps(summary, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+            print(f"Wrote parity summary to {args.output_json}")
+        else:
+            print(json.dumps(summary, indent=2, ensure_ascii=False))
+        if args.visualizations_dir is not None:
+            print(f"Wrote parity visualizations to {args.visualizations_dir}")
         return 0
 
     parser.print_help()

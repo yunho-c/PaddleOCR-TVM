@@ -86,7 +86,11 @@
         "--images",
         "${input:parityMobileImages}",
         "--artifacts-dir",
-        ".artifacts"
+        ".artifacts",
+        "--output-json",
+        ".artifacts/parity/summary.json",
+        "--visualizations-dir",
+        ".artifacts/parity/viz"
       ],
       "options": {
         "cwd": "${workspaceFolder}/python"
